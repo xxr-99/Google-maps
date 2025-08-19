@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>小蛋糕和小岛的旅行地图</title>
+    <meta charset="utf-8" />
+    <style>
+      #map {
+        height: 100vh;
+        width: 100%;
+      }
+    </style>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <script>
+      let map;
+      let markers = [];
+
+      // TODO: 把这里替换成你 Firebase 项目的配置
+      const firebaseConfig = {
+        apiKey: "AIzaSyCsxlzeLoQSy9sZFgme-119IpCIfyDN_XA",
+        authDomain: "maps-b32b0.firebaseapp.com",
+        projectId: "maps-b32b0",
+        storageBucket: "maps-b32b0.firebasestorage.app",
+        messagingSenderId: "208074045290",
+        appId: "1:208074045290:web:37e8a43580727551fa9713"
+      };
+
+      // 初始化 Firebase
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      function initMap() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: { lat: 37.7749, lng: -122.4194 },
+          zoom: 4,
+        });
+
+        // 从 Firebase 加载现有标记
+        db.ref("markers").on("value", (snapshot) => {
+          clearMarkers();
+          const data = snapshot.val();
+          if (data) {
+            Object.values(data).forEach(({ lat, lng, title }) =>
+              addMarker({ lat, lng }, title, false)
+            );
+          }
+        });
+
+        // 点击地图时，新增标记并存入 Firebase
+        map.addListener("click", (e) => {
+          const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+          const title = prompt("给这个地点写个备注吧：", "");
+          if (title !== null) {
+            addMarker(position, title, true);
+          }
+        });
+      }
+
+      function addMarker(position, title = "", save = false) {
+        const marker = new google.maps.Marker({
+          position,
+          map,
+        });
+
+        if (title) {
+          const infowindow = new google.maps.InfoWindow({
+            content: `<div>${title}</div>`,
+          });
+          marker.addListener("click", () => {
+            infowindow.open(map, marker);
+          });
+        }
+
+        markers.push(marker);
+
+        // 如果是用户新加的点，就保存到 Firebase
+        if (save) {
+          const newRef = db.ref("markers").push();
+          newRef.set({
+            lat: position.lat,
+            lng: position.lng,
+            title: title,
+          });
+        }
+      }
+
+      function clearMarkers() {
+        markers.forEach((m) => m.setMap(null));
+        markers = [];
+      }
+    </script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script async
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAIlfymkqVb52HxyvJrvl2QjEn0exXMSTc&callback=initMap">
+    </script>
+  </body>
+</html>
