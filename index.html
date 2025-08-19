@@ -8,6 +8,27 @@
         height: 100vh;
         width: 100%;
       }
+      .custom-info-window {
+        padding: 10px;
+        min-width: 200px;
+      }
+      .custom-info-window button {
+        margin: 5px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+      .delete-btn {
+        background-color: #ff4d4d;
+        color: white;
+        border: none;
+        border-radius: 3px;
+      }
+      .edit-btn {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 3px;
+      }
     </style>
 
     <!-- Firebase SDK -->
@@ -17,12 +38,13 @@
     <script>
       let map;
       let markers = [];
+      let currentInfoWindow = null;
 
-      // ✅ 替换成你的 Firebase 配置（注意多了 databaseURL）
+      // Firebase 配置
       const firebaseConfig = {
         apiKey: "AIzaSyCsxlzeLoQSy9sZFgme-119IpCIfyDN_XA",
         authDomain: "maps-b32b0.firebaseapp.com",
-        databaseURL: "https://maps-b32b0-default-rtdb.firebaseio.com", // 必须有这个！
+        databaseURL: "https://maps-b32b0-default-rtdb.firebaseio.com",
         projectId: "maps-b32b0",
         storageBucket: "maps-b32b0.appspot.com",
         messagingSenderId: "208074045290",
@@ -44,9 +66,15 @@
           clearMarkers();
           const data = snapshot.val();
           if (data) {
-            Object.values(data).forEach(({ lat, lng, title }) =>
-              addMarker({ lat, lng }, title, false)
-            );
+            Object.keys(data).forEach(key => {
+              const markerData = data[key];
+              addMarker(
+                { lat: markerData.lat, lng: markerData.lng }, 
+                markerData.title, 
+                false, 
+                key // 传递 Firebase key
+              );
+            });
           }
         });
 
@@ -60,20 +88,59 @@
         });
       }
 
-      function addMarker(position, title = "", save = false) {
+      function addMarker(position, title = "", save = false, key = null) {
         const marker = new google.maps.Marker({
           position,
           map,
+          title: title
         });
 
-        if (title) {
-          const infowindow = new google.maps.InfoWindow({
-            content: `<div>${title}</div>`,
-          });
-          marker.addListener("click", () => {
-            infowindow.open(map, marker);
-          });
+        // 存储 Firebase key 到标记对象
+        if (key) {
+          marker.firebaseKey = key;
         }
+
+        // 创建信息窗口内容
+        const infoContent = document.createElement("div");
+        infoContent.className = "custom-info-window";
+        
+        const titleElement = document.createElement("div");
+        titleElement.innerHTML = `<strong>${title || "未命名地点"}</strong>`;
+        infoContent.appendChild(titleElement);
+        
+        // 添加编辑按钮
+        const editButton = document.createElement("button");
+        editButton.className = "edit-btn";
+        editButton.textContent = "编辑";
+        editButton.onclick = () => {
+          if (currentInfoWindow) currentInfoWindow.close();
+          editMarker(marker);
+        };
+        infoContent.appendChild(editButton);
+        
+        // 添加删除按钮
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "delete-btn";
+        deleteButton.textContent = "删除";
+        deleteButton.onclick = () => {
+          if (currentInfoWindow) currentInfoWindow.close();
+          deleteMarker(marker);
+        };
+        infoContent.appendChild(deleteButton);
+
+        const infowindow = new google.maps.InfoWindow({
+          content: infoContent
+        });
+
+        marker.addListener("click", () => {
+          // 关闭之前打开的信息窗口
+          if (currentInfoWindow) {
+            currentInfoWindow.close();
+          }
+          
+          infowindow.open(map, marker);
+          currentInfoWindow = infowindow;
+        });
 
         markers.push(marker);
 
@@ -84,12 +151,63 @@
             lat: position.lat,
             lng: position.lng,
             title: title,
+          }).then(() => {
+            // 保存成功后，更新标记的 Firebase key
+            marker.firebaseKey = newRef.key;
+          }).catch((error) => {
+            console.error("保存标记时出错: ", error);
+            alert("保存失败，请检查控制台查看错误详情");
           });
         }
       }
 
+      function editMarker(marker) {
+        const newTitle = prompt("请输入新的地点名称：", marker.title || "");
+        if (newTitle !== null) {
+          // 更新标记的标题
+          marker.title = newTitle;
+          
+          // 更新 Firebase 中的数据
+          if (marker.firebaseKey) {
+            db.ref("markers").child(marker.firebaseKey).update({
+              title: newTitle
+            }).catch((error) => {
+              console.error("更新标记时出错: ", error);
+              alert("更新失败，请检查控制台查看错误详情");
+            });
+          }
+          
+          // 重新打开信息窗口以显示新标题
+          google.maps.event.trigger(marker, 'click');
+        }
+      }
+
+      function deleteMarker(marker) {
+        if (confirm("确定要删除这个标记吗？")) {
+          // 从 Firebase 中删除数据
+          if (marker.firebaseKey) {
+            db.ref("markers").child(marker.firebaseKey).remove()
+              .catch((error) => {
+                console.error("删除标记时出错: ", error);
+                alert("删除失败，请检查控制台查看错误详情");
+              });
+          }
+          
+          // 从地图上移除标记
+          marker.setMap(null);
+          
+          // 从标记数组中移除
+          const index = markers.indexOf(marker);
+          if (index > -1) {
+            markers.splice(index, 1);
+          }
+        }
+      }
+
       function clearMarkers() {
-        markers.forEach((m) => m.setMap(null));
+        markers.forEach((m) => {
+          m.setMap(null);
+        });
         markers = [];
       }
     </script>
