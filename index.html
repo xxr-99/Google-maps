@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>小蛋糕和小岛的旅行地图</title>
+    <meta charset="utf-8" />
+    <style>
+      #map {
+        height: 100vh;
+        width: 100%;
+      }
+    </style>
+    <script>
+      let map;
+      let markers = [];
+
+      function initMap() {
+        // 初始地图位置（比如旧金山）
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: { lat: 37.7749, lng: -122.4194 },
+          zoom: 4,
+        });
+
+        // 从 localStorage 加载旧的点
+        const saved = JSON.parse(localStorage.getItem("myMarkers") || "[]");
+        saved.forEach(({ lat, lng, title }) => addMarker({ lat, lng }, title));
+
+        // 点击地图加新点
+        map.addListener("click", (e) => {
+          const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+          const title = prompt("给这个地点写个备注吧：", "");
+          if (title !== null) {
+            addMarker(position, title);
+            saveMarkers();
+          }
+        });
+      }
+
+      function addMarker(position, title = "") {
+        const marker = new google.maps.Marker({
+          position,
+          map,
+        });
+
+        if (title) {
+          const infowindow = new google.maps.InfoWindow({
+            content: `<div>${title}</div>`,
+          });
+          marker.addListener("click", () => {
+            infowindow.open(map, marker);
+          });
+        }
+
+        markers.push({ marker, title });
+      }
+
+      function saveMarkers() {
+        const data = markers.map(({ marker, title }) => ({
+          lat: marker.getPosition().lat(),
+          lng: marker.getPosition().lng(),
+          title: title,
+        }));
+        localStorage.setItem("myMarkers", JSON.stringify(data));
+      }
+    </script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script async
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAIlfymkqVb52HxyvJrvl2QjEn0exXMSTc&callback=initMap">
+    </script>
+  </body>
+</html>
