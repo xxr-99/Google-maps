@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script>
+  // 你的“钥匙”在这里！把从Firebase复制的全部粘贴过来，替换掉下面这块！
+  const firebaseConfig = {
+    apiKey: "AIzaSyCsxlzeLoQSy9sZFgme-119IpCIfyDN_XA",
+    authDomain: "maps-b32b0.firebaseapp.com",
+    projectId: "maps-b32b0",
+    storageBucket: "maps-b32b0.firebasestorage.app",
+    messagingSenderId: "208074045290",
+    appId: "1:208074045290:web:37e8a43580727551fa9713"
+  };
+
+  // 初始化 Firebase
+  const app = firebase.initializeApp(firebaseConfig);
+  // 获取数据库服务
+  const db = firebase.firestore();
+</script>
     <title>小蛋糕和小岛的旅行地图</title>
     <meta charset="utf-8" />
     <style>
@@ -13,32 +31,71 @@
       let map;
       let markers = [];
 
-      function initMap() {
-        // 初始地图位置（比如旧金山）
-        map = new google.maps.Map(document.getElementById("map"), {
-          center: { lat: 37.7749, lng: -122.4194 },
-          zoom: 4,
-        });
+function initMap() {
+  // 初始化 Firebase (使用你自己的配置)
+  const firebaseConfig = {
+     apiKey: "AIzaSyCsxlzeLoQSy9sZFgme-119IpCIfyDN_XA",
+  authDomain: "maps-b32b0.firebaseapp.com",
+  projectId: "maps-b32b0",
+  storageBucket: "maps-b32b0.firebasestorage.app",
+  messagingSenderId: "208074045290",
+  appId: "1:208074045290:web:37e8a43580727551fa9713"
+  };
+  
+  // 初始化 Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-        // 从 localStorage 加载旧的点
-        const saved = JSON.parse(localStorage.getItem("myMarkers") || "[]");
-        saved.forEach(({ lat, lng, title }) => addMarker({ lat, lng }, title));
+  // 初始地图位置（比如旧金山）
+  map = new google.maps.Map(document.getElementById("map"), {
+    center: { lat: 37.7749, lng: -122.4194 },
+    zoom: 4,
+  });
 
-        // 点击地图加新点
-        map.addListener("click", (e) => {
-          const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-          const title = prompt("给这个地点写个备注吧：", "");
-          if (title !== null) {
-            addMarker(position, title);
-            saveMarkers();
+  // 从 Firebase 加载所有标记（替换原来的 localStorage 代码）
+  db.collection("markers").orderBy("timestamp", "asc").get().then((querySnapshot) => {
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      addMarker({ lat: data.lat, lng: data.lng }, data.title);
+    });
+  });
+
+  // 实时监听新标记（这是实现多人同步的关键！）
+  db.collection("markers").orderBy("timestamp", "asc")
+    .onSnapshot((snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const data = change.doc.data();
+          // 检查标记是否已经存在，避免重复添加
+          if (!document.querySelector(`[data-marker-id="${change.doc.id}"]`)) {
+            addMarker({ lat: data.lat, lng: data.lng }, data.title, change.doc.id);
           }
-        });
-      }
+        }
+      });
+    });
+
+  // 点击地图加新点（修改为保存到 Firebase）
+  map.addListener("click", (e) => {
+    const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    const title = prompt("给这个地点写个备注吧：", "");
+    if (title !== null) {
+      // 保存到 Firebase
+      db.collection("markers").add({
+        lat: position.lat,
+        lng: position.lng,
+        title: title,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      // 注意：这里不再调用 saveMarkers()，因为标记会通过上面的监听自动添加
+    }
+  });
+}
 
       function addMarker(position, title = "") {
         const marker = new google.maps.Marker({
-          position,
-          map,
+          position: position,
+          map: map,
+          title: title
         });
 
         if (title) {
@@ -52,15 +109,14 @@
 
         markers.push({ marker, title });
       }
-
-      function saveMarkers() {
-        const data = markers.map(({ marker, title }) => ({
-          lat: marker.getPosition().lat(),
-          lng: marker.getPosition().lng(),
-          title: title,
-        }));
-        localStorage.setItem("myMarkers", JSON.stringify(data));
-      }
+// 添加一个自定义属性来存储 Firebase 文档 ID
+  if (id) {
+    marker.set("data-marker-id", id);
+  }
+  
+  return marker;
+}
+     
     </script>
   </head>
   <body>
