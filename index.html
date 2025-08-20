@@ -29,6 +29,37 @@
         border: none;
         border-radius: 3px;
       }
+      #controls {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        display: flex;
+        gap: 10px;
+      }
+      #auth-container {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      }
+      #address-search {
+        display: flex;
+        gap: 5px;
+      }
+      #address-input {
+        padding: 5px;
+        width: 200px;
+      }
     </style>
 
     <!-- Firebase SDK -->
@@ -39,6 +70,14 @@
       let map;
       let markers = [];
       let currentInfoWindow = null;
+      let isAuthenticated = false;
+      let geocoder;
+
+      // 预定义的用户名和密码（在实际应用中应该使用更安全的认证方式）
+      const VALID_USERS = {
+        "小蛋糕": "password1",
+        "小岛": "password2"
+      };
 
       // Firebase 配置
       const firebaseConfig = {
@@ -56,10 +95,14 @@
       const db = firebase.database();
 
       function initMap() {
+        // 1. 默认定位到中国中心
         map = new google.maps.Map(document.getElementById("map"), {
-          center: { lat: 37.7749, lng: -122.4194 },
+          center: { lat: 35.8617, lng: 104.1954 }, // 中国中心坐标
           zoom: 4,
         });
+
+        // 初始化地理编码器
+        geocoder = new google.maps.Geocoder();
 
         // 从 Firebase 加载现有标记
         db.ref("markers").on("value", (snapshot) => {
@@ -72,7 +115,7 @@
                 { lat: markerData.lat, lng: markerData.lng }, 
                 markerData.title, 
                 false, 
-                key // 传递 Firebase key
+                key
               );
             });
           }
@@ -80,10 +123,115 @@
 
         // 点击地图时，新增标记并存入 Firebase
         map.addListener("click", (e) => {
+          if (!isAuthenticated) {
+            alert("请先登录以添加标记");
+            return;
+          }
           const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
           const title = prompt("给这个地点写个备注吧：", "");
           if (title !== null) {
             addMarker(position, title, true);
+          }
+        });
+
+        // 添加控制界面
+        initControls();
+      }
+
+      function initControls() {
+        // 添加地址搜索框
+        const controlsDiv = document.createElement('div');
+        controlsDiv.id = 'controls';
+        controlsDiv.innerHTML = `
+          <div id="address-search">
+            <input type="text" id="address-input" placeholder="输入地址搜索...">
+            <button onclick="searchAddress()">搜索</button>
+          </div>
+        `;
+        document.body.appendChild(controlsDiv);
+
+        // 添加认证界面
+        const authDiv = document.createElement('div');
+        authDiv.id = 'auth-container';
+        authDiv.innerHTML = `
+          <div>
+            <input type="text" id="username" placeholder="用户名" style="margin-bottom:5px;width:100%;">
+            <input type="password" id="password" placeholder="密码" style="width:100%;">
+            <button onclick="login()" style="width:100%;margin-top:5px;">登录</button>
+            <button onclick="logout()" style="width:100%;margin-top:5px;display:none;" id="logout-btn">退出</button>
+          </div>
+        `;
+        document.body.appendChild(authDiv);
+
+        // 检查本地存储中是否有登录状态
+        const savedAuth = localStorage.getItem('mapAuth');
+        if (savedAuth) {
+          const authData = JSON.parse(savedAuth);
+          document.getElementById('username').value = authData.username;
+          document.getElementById('password').value = authData.password;
+          login();
+        }
+      }
+
+      function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+        if (VALID_USERS[username] && VALID_USERS[username] === password) {
+          isAuthenticated = true;
+          document.getElementById('logout-btn').style.display = 'block';
+          document.getElementById('username').style.display = 'none';
+          document.getElementById('password').style.display = 'none';
+          document.querySelector('#auth-container button').style.display = 'none';
+          
+          // 保存登录状态到本地存储
+          localStorage.setItem('mapAuth', JSON.stringify({ username, password }));
+          
+          alert(`欢迎回来，${username}！`);
+        } else {
+          alert('用户名或密码错误');
+        }
+      }
+
+      function logout() {
+        isAuthenticated = false;
+        document.getElementById('logout-btn').style.display = 'none';
+        document.getElementById('username').style.display = 'block';
+        document.getElementById('password').style.display = 'block';
+        document.querySelector('#auth-container button').style.display = 'block';
+        document.getElementById('username').value = '';
+        document.getElementById('password').value = '';
+        
+        // 清除本地存储的登录状态
+        localStorage.removeItem('mapAuth');
+      }
+
+      function searchAddress() {
+        const address = document.getElementById('address-input').value;
+        if (!address) {
+          alert('请输入地址');
+          return;
+        }
+
+        geocoder.geocode({ address: address }, (results, status) => {
+          if (status === 'OK') {
+            const location = results[0].geometry.location;
+            map.setCenter(location);
+            map.setZoom(15);
+            
+            // 添加标记
+            if (isAuthenticated) {
+              const title = prompt("给这个地点写个备注吧：", address);
+              if (title !== null) {
+                addMarker(
+                  { lat: location.lat(), lng: location.lng() },
+                  title,
+                  true
+                );
+              }
+            }
+          } else {
+            alert('无法找到该地址: ' + status);
           }
         });
       }
@@ -108,25 +256,26 @@
         titleElement.innerHTML = `<strong>${title || "未命名地点"}</strong>`;
         infoContent.appendChild(titleElement);
         
-        // 添加编辑按钮
-        const editButton = document.createElement("button");
-        editButton.className = "edit-btn";
-        editButton.textContent = "编辑";
-        editButton.onclick = () => {
-          if (currentInfoWindow) currentInfoWindow.close();
-          editMarker(marker);
-        };
-        infoContent.appendChild(editButton);
-        
-        // 添加删除按钮
-        const deleteButton = document.createElement("button");
-        deleteButton.className = "delete-btn";
-        deleteButton.textContent = "删除";
-        deleteButton.onclick = () => {
-          if (currentInfoWindow) currentInfoWindow.close();
-          deleteMarker(marker);
-        };
-        infoContent.appendChild(deleteButton);
+        // 只有认证用户才显示编辑和删除按钮
+        if (isAuthenticated) {
+          const editButton = document.createElement("button");
+          editButton.className = "edit-btn";
+          editButton.textContent = "编辑";
+          editButton.onclick = () => {
+            if (currentInfoWindow) currentInfoWindow.close();
+            editMarker(marker);
+          };
+          infoContent.appendChild(editButton);
+          
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "delete-btn";
+          deleteButton.textContent = "删除";
+          deleteButton.onclick = () => {
+            if (currentInfoWindow) currentInfoWindow.close();
+            deleteMarker(marker);
+          };
+          infoContent.appendChild(deleteButton);
+        }
 
         const infowindow = new google.maps.InfoWindow({
           content: infoContent
@@ -162,9 +311,14 @@
       }
 
       function editMarker(marker) {
+        if (!isAuthenticated) {
+          alert("请先登录以编辑标记");
+          return;
+        }
         const newTitle = prompt("请输入新的地点名称：", marker.title || "");
         if (newTitle !== null) {
           // 更新标记的标题
+          marker.setTitle(newTitle);
           marker.title = newTitle;
           
           // 更新 Firebase 中的数据
@@ -183,6 +337,10 @@
       }
 
       function deleteMarker(marker) {
+        if (!isAuthenticated) {
+          alert("请先登录以删除标记");
+          return;
+        }
         if (confirm("确定要删除这个标记吗？")) {
           // 从 Firebase 中删除数据
           if (marker.firebaseKey) {
